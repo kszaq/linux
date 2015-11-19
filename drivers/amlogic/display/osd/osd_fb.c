@@ -2125,6 +2125,9 @@ static int osd_probe(struct platform_device *pdev)
 	case 3:
 		current_mode = VMODE_1080P;
 		break;
+	case 4:
+		current_mode = VMODE_720P;
+		break;
 	default:
 		current_mode = VMODE_MASK;
 		break;
