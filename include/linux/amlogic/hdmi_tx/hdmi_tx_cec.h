@@ -442,6 +442,7 @@ struct cec_global_info_t {
 	struct cec_node_info_t cec_node_info[MAX_NUM_OF_DEV];
 	struct cec_rx_msg_buf_t cec_rx_msg_buf;
 	struct hdmitx_dev *hdmitx_device;
+	enum cec_power_status_e tv_power_status;
 };
 
 struct cec_global_info_to_usr_t {

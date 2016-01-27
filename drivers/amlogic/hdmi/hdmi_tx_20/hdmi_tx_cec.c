@@ -137,6 +137,14 @@ unsigned int menu_lang_array[] = {
 static unsigned char *osd_name = "MBox";
 static unsigned int vendor_id = 0x00;
 
+static inline void wait_for_cec_rx(void)
+{
+
+	while (cec_global_info.cec_rx_msg_buf.rx_read_pos ==
+		cec_global_info.cec_rx_msg_buf.rx_write_pos)
+		msleep(20);
+}
+
 #ifdef CONFIG_HAS_EARLYSUSPEND
 #include <linux/earlysuspend.h>
 static struct early_suspend hdmitx_cec_early_suspend_handler;
@@ -443,6 +451,18 @@ int cec_node_init(struct hdmitx_dev *hdmitx_device)
 				msleep(150);
 			}
 			cec_device_vendor_id((struct cec_rx_message_t *)0);
+
+			/* Disable switch TV on automatically */
+			if (!(hdmitx_device->cec_func_config &
+			     (1 << AUTO_POWER_ON_MASK))) {
+				cec_usrcmd_get_device_power_status(CEC_TV_ADDR);
+				msleep(200);
+				wait_for_cec_rx();
+				cec_isr_post_process();
+
+				if (cec_global_info.tv_power_status)
+					return 0;
+			}
 
 			cec_imageview_on_smp();
 
@@ -1403,6 +1423,8 @@ void cec_handle_message(struct cec_rx_message_t *pcec_message)
 		case CEC_OC_REPORT_PHYSICAL_ADDRESS:
 			break;
 		case CEC_OC_REPORT_POWER_STATUS:
+			cec_global_info.tv_power_status =
+				pcec_message->content.msg.operands[0];
 			break;
 		case CEC_OC_SET_OSD_NAME:
 			break;
