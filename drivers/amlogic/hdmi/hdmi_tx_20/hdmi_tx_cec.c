@@ -1461,10 +1461,12 @@ void cec_handle_message(struct cec_rx_message_t *pcec_message)
 			if (cec_global_info.cec_node_info[cec_global_info
 			    .my_node_index].menu_status != DEVICE_MENU_ACTIVE)
 				break;
+#ifndef CONFIG_ARCH_MESON64_ODROIDC2
 			/* do not active soruce when standby */
 			if (cec_global_info.cec_node_info[cec_global_info.
 				my_node_index].power_status == POWER_STANDBY)
 				break;
+#endif
 			cec_active_source_smp();
 			break;
 		case CEC_OC_GIVE_DEVICE_POWER_STATUS:
