@@ -236,7 +236,7 @@ static int hdmi_prbs_mode = 0xffff;
 static int hdmi_480p_force_clk; /* 200, 225, 250, 270 */
 static int hdmi_detect_when_booting = 1;
 /* 1: error  2: important  3: normal  4: detailed */
-static int debug_level = INF;
+static int debug_level = IMP;
 
 /*****************************
 *	hdmitx attr management :
