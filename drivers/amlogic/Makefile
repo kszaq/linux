@@ -104,7 +104,7 @@ obj-$(CONFIG_MESON_MHU_MBOX)	+= mailbox/
 
 obj-$(CONFIG_AML_RDMA)		+= rdma/
 
-obj-$(CONFIG_AML_TEMP_SENSOR) += thermal/
+obj-$(CONFIG_AMLOGIC_THERMAL) += thermal/
 
 obj-$(CONFIG_AUDIO_DATA) += audinfo_kernel/
 

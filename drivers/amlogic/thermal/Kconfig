@@ -1,15 +1,28 @@
-#
-# Amlogic temperature sensor configuration
-#
+# Amlogic Thermal
 
-menu "Amlogic temperature sensor"
 
-config AML_TEMP_SENSOR
-	bool "Amlgoic temperature sensor Support"
-	default n
-	---help---
-		"thermal sensor low level support for thermal"
-		"if you want to use amlogic inside temperature sensor"
-		"please select this config"
+config AML_VIRTUAL_THERMAL
+    bool "Amlogic virtual thermal interface"
+    default n
+    help 
+        Say Y if you want use amlogic virtual thermal interface
 
-endmenu
+config AML_PLATFORM_THERMAL 
+    bool "Amlogic platform thermal interface"
+    default n
+    help 
+        Say Y if you want use amlogic platform thermal interface
+
+config AMLOGIC_THERMAL
+    tristate "amlogic thermal support"
+    select THERMAL
+    select CPU_THERMAL
+    select GPU_THERMAL
+    select CPUCORE_THERMAL
+    select GPUCORE_THERMAL
+    select AML_VIRTUAL_THERMAL 
+    select AML_PLATFORM_THERMAL
+    depends on CPU_FREQ
+    default n
+    help
+      This is the Amlogic Thermal interface driver
