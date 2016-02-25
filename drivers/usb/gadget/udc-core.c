@@ -243,8 +243,9 @@ int usb_add_gadget_udc_release(struct device *parent, struct usb_gadget *gadget,
 	usb_gadget_set_state(gadget, USB_STATE_NOTATTACHED);
 
 	mutex_unlock(&udc_lock);
-
+#ifdef CONFIG_USB_G_ANDROID
 	android_usb_init();
+#endif
 	return 0;
 
 err4:
