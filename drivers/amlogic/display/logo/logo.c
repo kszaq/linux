@@ -213,7 +213,7 @@ static int refresh_mode_and_logo(bool first)
 		}
 		last_mode = cur_mode;
 		vout_notifier_call_chain(VOUT_EVENT_MODE_CHANGE, &cur_mode);
-		set_osd_freescaler(logo_info.index, cur_mode);
+		//set_osd_freescaler(logo_info.index, cur_mode);//vit commented
 	}
 
 	return 0;
