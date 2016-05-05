@@ -1744,7 +1744,6 @@ void hdmitx_hpd_plugin_handler(struct work_struct *work)
 	hdmitx_set_audio(hdev, &(hdev->cur_audio_param), hdmi_ch);
 	switch_set_state(&sdev, 1);
 	cec_node_init(hdev);
-
 	hdev->hdmitx_event &= ~HDMI_TX_HPD_PLUGIN;
 	mutex_unlock(&setclk_mutex);
 }

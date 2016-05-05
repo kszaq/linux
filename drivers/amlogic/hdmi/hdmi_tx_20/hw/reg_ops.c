@@ -33,7 +33,9 @@
 #include "hdmi_tx_reg.h"
 
 static int dbg_en;
+#ifndef CONFIG_AML_AO_CEC
 static DEFINE_SPINLOCK(reg_lock2);
+#endif
 
 /*
  * RePacket HDMI related registers rd/wr
@@ -301,6 +303,7 @@ void hdmitx_rd_check_reg(unsigned int addr, unsigned int exp_data,
 		} \
 	} while (0)
 
+#ifndef CONFIG_AML_AO_CEC
 unsigned long aocec_rd_reg(unsigned long addr)
 {
 	unsigned long data32;
@@ -332,6 +335,7 @@ void aocec_wr_reg(unsigned long addr, unsigned long data)
 	hd_write_reg(P_AO_CEC_RW_REG, data32);
 	spin_unlock_irqrestore(&reg_lock2, flags);
 } /* aocec_wr_only_reg */
+#endif
 
 void hdcp22_wr_reg(uint32_t addr, uint32_t data)
 {

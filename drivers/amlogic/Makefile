@@ -119,3 +119,5 @@ obj-$(CONFIG_INSTABOOT)		+= instaboot/
 obj-$(CONFIG_UMP)			+= gpu/ump/
 
 obj-$(CONFIG_MALI400)		+= gpu/mali/
+
+obj-$(CONFIG_AML_AO_CEC) += cec/
