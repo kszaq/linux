@@ -128,6 +128,9 @@ static int __init hdmitx_hdcp_init(void)
 
 	switch_dev_register(&hdcp_dev);
 
+	if(hdmitx_device->HWOp.CntlDDC == NULL)
+		return 0;
+
 	hdmitx_device->task_hdcp = kthread_run(hdmitx_hdcp_task,
 		(void *)hdmitx_device, "kthread_hdcp");
 
