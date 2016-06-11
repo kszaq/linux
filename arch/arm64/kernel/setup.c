@@ -55,6 +55,7 @@
 #include <asm/traps.h>
 #include <asm/memblock.h>
 #include <asm/psci.h>
+#include <linux/amlogic/cpu_version.h>
 
 unsigned int processor_id;
 EXPORT_SYMBOL(processor_id);
@@ -429,6 +430,7 @@ static const char *hwcap_str[] = {
 static int c_show(struct seq_file *m, void *v)
 {
 	int i;
+	int rev;
 
 	seq_printf(m, "Processor\t: %s rev %d (%s)\n",
 		   cpu_name, read_cpuid_id() & 15, ELF_PLATFORM);
@@ -471,6 +473,8 @@ static int c_show(struct seq_file *m, void *v)
 	seq_puts(m, "\n");
 
 	seq_printf(m, "Hardware\t: %s\n", machine_name);
+	rev = 0x0200 | get_meson_cpu_version(MESON_CPU_VERSION_LVL_MINOR);
+	seq_printf(m, "Revision\t: %04x\n", rev);
 
 	return 0;
 }
