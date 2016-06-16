@@ -29,7 +29,7 @@
 
 
 #include "register_ops.h"
-#define debug_print pr_info
+#define debug_print pr_debug
 /*
 HHI_VDEC_CLK_CNTL
 0x1078[11:9] (fclk = 2000MHz)
@@ -240,6 +240,7 @@ enum vformat_e {
 	VFORMAT_HEVC,
 	VFORMAT_H264_ENC,
 	VFORMAT_JPEG_ENC,
+	VFORMAT_VP9,
 	VFORMAT_MAX
 };
 sample:
@@ -265,7 +266,7 @@ static  struct clk_set_setting clks_for_formats[] = {
 		{1920*1080*60, 600}, {4096*2048*60, 600}, {INT_MAX, 600},}
 	},
 	{/*[VFORMAT_MJPEG]*/
-		{{1280*720*30, 100}, {1920*1080*30, 166}, {1920*1080*60, 333},
+		{{1280*720*30, 200}, {1920*1080*30, 200}, {1920*1080*60, 333},
 		{4096*2048*30, 600}, {4096*2048*60, 600}, {INT_MAX, 600},}
 	},
 	{/*[VFORMAT_REAL]*/
@@ -308,6 +309,11 @@ static  struct clk_set_setting clks_for_formats[] = {
 		{{1280*720*30, 0}, {INT_MAX, 0},
 		{0, 0}, {0, 0}, {0, 0}, {0, 0},}
 	},
+	{/*VFORMAT_VP9*/
+		{{1280*720*30, 100}, {1920*1080*30, 100}, {1920*1080*60, 166},
+		{4096*2048*30, 333}, {4096*2048*60, 630}, {INT_MAX, 630},}
+	},
+
 };
 
 
@@ -350,6 +356,8 @@ static int vdec_clock_set(int clk)
 		else
 			clk = clock_real_clk[VDEC_1];
 	}
+	if (get_cpu_type() == MESON_CPU_MAJOR_ID_GXL && clk >= 500)
+		clk = 667;
 	vdec_get_clk_source(clk, &source, &div, &rclk);
 
 	if (clock_real_clk[VDEC_1] == rclk)
@@ -474,6 +482,8 @@ static int hevc_clock_set(int clk)
 		else
 			clk = clock_real_clk[VDEC_HEVC];
 	}
+	if (get_cpu_type() == MESON_CPU_MAJOR_ID_GXL && clk >= 500)
+		clk = 667;
 
 	vdec_get_clk_source(clk, &source, &div, &rclk);
 
@@ -537,7 +547,10 @@ static int vdec_clock_get(enum vdec_type_e core)
 #define VDEC_HAS_VDEC_HCODEC
 #define VDEC_HAS_CLK_SETTINGS
 #define CLK_FOR_CPU {\
-			MESON_CPU_MAJOR_ID_GXBB,\
-			0}
+	MESON_CPU_MAJOR_ID_GXBB,\
+	MESON_CPU_MAJOR_ID_GXTVBB,\
+	MESON_CPU_MAJOR_ID_GXL,\
+	MESON_CPU_MAJOR_ID_GXM,\
+	0}
 #include "clk.h"
 ARCH_VDEC_CLK_INIT();

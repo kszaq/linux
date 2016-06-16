@@ -98,7 +98,10 @@ static const char * const vdec_device_name[] = {
 	"amvdec_yuv",
 	"amvdec_h264mvc",
 	"amvdec_h264_4k2k",
-	"amvdec_h265"
+	"amvdec_h265",
+	"amvenc_avc",
+	"jpegenc",
+	"amvdec_vp9"
 };
 
 static int vdec_default_buf_size[] = {
@@ -114,6 +117,9 @@ static int vdec_default_buf_size[] = {
 	64, /*"amvdec_h264mvc",*/
 	64, /*"amvdec_h264_4k2k", else alloc on decoder*/
 	48, /*"amvdec_h265", else alloc on decoder*/
+	0,  /* avs encoder */
+	0,  /* jpg encoder */
+	32, /*"amvdec_vp9", else alloc on decoder*/
 	0
 };
 
@@ -146,7 +152,7 @@ s32 vdec_init(enum vformat_e vf, int is_4k)
 	int retry_num = 0;
 
 	if (inited_vcodec_num >= SUPPORT_VCODEC_NUM) {
-		pr_info("We only support the one video code at each time\n");
+		pr_err("We only support the one video code at each time\n");
 		return -EIO;
 	}
 	if (vf == VFORMAT_H264_4K2K ||
@@ -155,7 +161,7 @@ s32 vdec_init(enum vformat_e vf, int is_4k)
 	}
 	inited_vcodec_num++;
 
-	pr_info("vdec_dev_reg.mem[0x%lx -- 0x%lx]\n",
+	pr_debug("vdec_dev_reg.mem[0x%lx -- 0x%lx]\n",
 		vdec_dev_reg.mem_start,
 		vdec_dev_reg.mem_end);
 
@@ -169,6 +175,8 @@ s32 vdec_init(enum vformat_e vf, int is_4k)
 			int m4k_size =
 				vdec_default_buf_size[VFORMAT_H264_4K2K] *
 				SZ_1M;
+			if (get_cpu_type() >= MESON_CPU_MAJOR_ID_GXTVBB)
+				m4k_size = 32 * SZ_1M;
 			if ((m4k_size > 0) && (m4k_size < 200 * SZ_1M))
 				alloc_size = m4k_size;
 		}
@@ -187,7 +195,7 @@ s32 vdec_init(enum vformat_e vf, int is_4k)
 			inited_vcodec_num--;
 			return -ENOMEM;
 		}
-		pr_info("vdec base memory alloced %p\n",
+		pr_debug("vdec base memory alloced %p\n",
 		(void *)vdec_dev_reg.mem_start);
 
 		vdec_dev_reg.mem_end = vdec_dev_reg.mem_start +
@@ -205,7 +213,7 @@ s32 vdec_init(enum vformat_e vf, int is_4k)
 
 	if (IS_ERR(vdec_device)) {
 		r = PTR_ERR(vdec_device);
-		pr_info("vdec: Decoder device register failed (%d)\n", r);
+		pr_err("vdec: Decoder device register failed (%d)\n", r);
 		inited_vcodec_num--;
 		goto error;
 	}
@@ -1135,7 +1143,7 @@ void pre_alloc_vdec_memory(void)
 		CODEC_MM_FLAGS_FOR_VDECODER);
 	if (!vdec_dev_reg.mem_start)
 		return;
-	pr_info("vdec base memory alloced %p\n",
+	pr_debug("vdec base memory alloced %p\n",
 	(void *)vdec_dev_reg.mem_start);
 
 	vdec_dev_reg.mem_end = vdec_dev_reg.mem_start +
@@ -1167,7 +1175,7 @@ static int vdec_probe(struct platform_device *pdev)
 		vdec_clock_hi_enable();
 	}
 
-	if (get_cpu_type() >= MESON_CPU_MAJOR_ID_GXBB) {
+	if (get_cpu_type() == MESON_CPU_MAJOR_ID_GXBB) {
 		/* set vdec dmc request to urgent */
 		WRITE_DMCREG(DMC_AM5_CHAN_CTRL, 0x3f203cf);
 	}
