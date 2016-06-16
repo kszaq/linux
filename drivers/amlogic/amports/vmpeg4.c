@@ -306,9 +306,10 @@ static irqreturn_t vmpeg4_isr(int irq, void *dev_id)
 				   READ_VREG(MP4_PIC_WH) & 0xffff);
 		}
 #endif
-		if (vmpeg4_amstream_dec_info.rate == 0) {
+		if (vmpeg4_amstream_dec_info.rate == 0
+		|| vmpeg4_amstream_dec_info.rate > 96000) {
 			/* if ((rate >> 16) != 0) { */
-			if ((rate & 0xffff) != 0) {
+			if ((rate & 0xffff) != 0 && (rate >> 16) != 0) {
 				vmpeg4_amstream_dec_info.rate =
 					(rate >> 16) * DURATION_UNIT /
 					(rate & 0xffff);
@@ -435,7 +436,7 @@ static irqreturn_t vmpeg4_isr(int irq, void *dev_id)
 				("fatal error, no available buffer slot.");
 				return IRQ_HANDLED;
 			}
-
+			vf->signal_type = 0;
 			vf->index = buffer_index;
 			vf->width = vmpeg4_amstream_dec_info.width;
 			vf->height = vmpeg4_amstream_dec_info.height;
@@ -454,6 +455,7 @@ static irqreturn_t vmpeg4_isr(int irq, void *dev_id)
 #endif
 			vf->canvas0Addr = vf->canvas1Addr =
 				index2canvas(buffer_index);
+			vf->type_original = vf->type;
 
 			set_aspect_ratio(vf, READ_VREG(MP4_PIC_RATIO));
 
@@ -470,7 +472,7 @@ static irqreturn_t vmpeg4_isr(int irq, void *dev_id)
 				"fatal error, no available buffer slot.");
 				return IRQ_HANDLED;
 			}
-
+			vf->signal_type = 0;
 			vf->index = buffer_index;
 			vf->width = vmpeg4_amstream_dec_info.width;
 			vf->height = vmpeg4_amstream_dec_info.height;
@@ -490,6 +492,7 @@ static irqreturn_t vmpeg4_isr(int irq, void *dev_id)
 #endif
 			vf->canvas0Addr = vf->canvas1Addr =
 					index2canvas(buffer_index);
+			vf->type_original = vf->type;
 
 			set_aspect_ratio(vf, READ_VREG(MP4_PIC_RATIO));
 
@@ -512,7 +515,7 @@ static irqreturn_t vmpeg4_isr(int irq, void *dev_id)
 				("fatal error, no available buffer slot.");
 				return IRQ_HANDLED;
 			}
-
+			vf->signal_type = 0;
 			vf->index = buffer_index;
 			vf->width = vmpeg4_amstream_dec_info.width;
 			vf->height = vmpeg4_amstream_dec_info.height;
@@ -532,6 +535,7 @@ static irqreturn_t vmpeg4_isr(int irq, void *dev_id)
 #endif
 			vf->canvas0Addr = vf->canvas1Addr =
 					index2canvas(buffer_index);
+			vf->type_original = vf->type;
 
 			set_aspect_ratio(vf, READ_VREG(MP4_PIC_RATIO));
 
@@ -628,11 +632,12 @@ static void vmpeg_put_timer_func(unsigned long arg)
 	while (!kfifo_is_empty(&recycle_q) && (READ_VREG(MREG_BUFFERIN) == 0)) {
 		struct vframe_s *vf;
 		if (kfifo_get(&recycle_q, &vf)) {
-			if ((vf->index >= 0) && (--vfbuf_use[vf->index] == 0)) {
+			if ((vf->index >= 0)
+				&& (vf->index < DECODE_BUFFER_NUM_MAX)
+				&& (--vfbuf_use[vf->index] == 0)) {
 				WRITE_VREG(MREG_BUFFERIN, ~(1 << vf->index));
-				vf->index = -1;
-			}
-
+				vf->index = DECODE_BUFFER_NUM_MAX;
+		     }
 			kfifo_put(&newframe_q, (const struct vframe_s *)vf);
 		}
 	}
@@ -863,7 +868,7 @@ static void vmpeg4_local_init(void)
 
 	for (i = 0; i < VF_POOL_SIZE; i++) {
 		const struct vframe_s *vf = &vfpool[i];
-		vfpool[i].index = -1;
+		vfpool[i].index = DECODE_BUFFER_NUM_MAX;
 		kfifo_put(&newframe_q, (const struct vframe_s *)vf);
 	}
 }

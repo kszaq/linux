@@ -30,6 +30,8 @@
 #define AMVENC_DEVINFO_M8 "AML-M8"
 #define AMVENC_DEVINFO_G9 "AML-G9"
 #define AMVENC_DEVINFO_GXBB "AML-GXBB"
+#define AMVENC_DEVINFO_GXTVBB "AML-GXTVBB"
+#define AMVENC_DEVINFO_GXL "AML-GXL"
 
 #define HCODEC_IRQ_MBOX_CLR HCODEC_ASSIST_MBOX2_CLR_REG
 #define HCODEC_IRQ_MBOX_MASK HCODEC_ASSIST_MBOX2_MASK
@@ -189,6 +191,10 @@ struct encode_request_s {
 	u32 framesize;
 	u32 qp_info_size;
 
+	u32 me_weight;
+	u32 i4_weight;
+	u32 i16_weight;
+
 	u32 nr_mode;
 	u32 flush_flag;
 	u32 timeout;
@@ -302,6 +308,14 @@ struct encode_wq_s {
 	u32 me_weight;
 	u32 i4_weight;
 	u32 i16_weight;
+
+	u32 quant_tbl_i4[2][8];
+	u32 quant_tbl_i16[2][8];
+	u32 quant_tbl_me[2][8];
+	u32 qp_table_id;
+
+	u32 fcnt_since_idr;
+
 	struct encode_meminfo_s mem;
 	struct encode_picinfo_s pic;
 	struct encode_control_s control;

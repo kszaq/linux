@@ -317,6 +317,7 @@ static irqreturn_t vreal_isr(int irq, void *dev_id)
 		/* pr_info("pts %d, picture type %d\n", vf->pts, pictype); */
 
 		info = READ_VREG(RV_PIC_INFO);
+		vf->signal_type = 0;
 		vf->index = buffer_index;
 		vf->width = info >> 16;
 		vf->height = (info >> 4) & 0xfff;
@@ -333,6 +334,7 @@ static irqreturn_t vreal_isr(int irq, void *dev_id)
 #endif
 		vf->canvas0Addr = vf->canvas1Addr = index2canvas(buffer_index);
 		vf->orientation = 0;
+		vf->type_original = vf->type;
 
 		vfbuf_use[buffer_index] = 1;
 
@@ -464,9 +466,10 @@ static void vreal_put_timer_func(unsigned long arg)
 	while (!kfifo_is_empty(&recycle_q) && (READ_VREG(TO_AMRISC) == 0)) {
 		struct vframe_s *vf;
 		if (kfifo_get(&recycle_q, &vf)) {
-			if ((vf->index >= 0) && (--vfbuf_use[vf->index] == 0)) {
+			if ((vf->index >= 0) && (vf->index < VF_BUF_NUM)
+				&& (--vfbuf_use[vf->index] == 0)) {
 				WRITE_VREG(TO_AMRISC, ~(1 << vf->index));
-				vf->index = -1;
+				vf->index = VF_BUF_NUM;
 			}
 
 			kfifo_put(&newframe_q, (const struct vframe_s *)vf);
@@ -678,7 +681,7 @@ static void vreal_local_init(void)
 
 	for (i = 0; i < VF_POOL_SIZE; i++) {
 		const struct vframe_s *vf = &vfpool[i];
-		vfpool[i].index = -1;
+		vfpool[i].index = VF_BUF_NUM;
 		kfifo_put(&newframe_q, vf);
 	}
 
@@ -954,10 +957,10 @@ static struct codec_profile_t amvdec_real_profile = {
 
 static int __init amvdec_real_driver_init_module(void)
 {
-	pr_info("amvdec_real module init\n");
+	pr_debug("amvdec_real module init\n");
 
 	if (platform_driver_register(&amvdec_real_driver)) {
-		pr_info("failed to register amvdec_real driver\n");
+		pr_err("failed to register amvdec_real driver\n");
 		return -ENODEV;
 	}
 	vcodec_profile_register(&amvdec_real_profile);
@@ -966,7 +969,7 @@ static int __init amvdec_real_driver_init_module(void)
 
 static void __exit amvdec_real_driver_remove_module(void)
 {
-	pr_info("amvdec_real module remove.\n");
+	pr_debug("amvdec_real module remove.\n");
 
 	platform_driver_unregister(&amvdec_real_driver);
 }

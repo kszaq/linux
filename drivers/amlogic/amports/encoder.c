@@ -60,6 +60,8 @@
 #define DUMP_INFO_BYTES_PER_MB 80
 /* #define USE_OLD_DUMP_MC */
 
+#define ADJUSTED_QP_FLAG 64
+
 static s32 avc_device_major;
 static struct device *amvenc_avc_dev;
 #define DRIVER_NAME "amvenc_avc"
@@ -83,6 +85,8 @@ static struct encode_manager_s encode_manager;
 #define DECODED_MB_Y                DOS_SCRATCH22
 #endif
 
+/* #define ENABLE_IGNORE_FUNCTION */
+
 static u32 anc0_buffer_id;
 static u32 ie_me_mb_type;
 static u32 ie_me_mode;
@@ -94,7 +98,7 @@ static u32 enable_dblk = 1;  /* 0 disable, 1 vdec 2 hdec */
 
 static u32 encode_print_level = LOG_DEBUG;
 static u32 no_timeout;
-static u32 nr_mode = 3;
+static u32 nr_mode = -1;
 
 static u32 me_mv_merge_ctl =
 	(0x1 << 31)  |  /* [31] me_merge_mv_en_16 */
@@ -150,131 +154,217 @@ static u32 p_mb_quant_dec_cfg = (60 << 24) | (40 << 16) | (30 << 8) | (20 << 0);
 /* [15:0] NUM_ROWS_PER_SLICE_I */
 static u32 fixed_slice_cfg;
 
+/* y tnr */
+static unsigned int y_tnr_mc_en = 1;
+static unsigned int y_tnr_txt_mode;
+static unsigned int y_tnr_mot_sad_margin = 1;
+static unsigned int y_tnr_mot_cortxt_rate = 1;
+static unsigned int y_tnr_mot_distxt_ofst = 5;
+static unsigned int y_tnr_mot_distxt_rate = 4;
+static unsigned int y_tnr_mot_dismot_ofst = 4;
+static unsigned int y_tnr_mot_frcsad_lock = 8;
+static unsigned int y_tnr_mot2alp_frc_gain = 10;
+static unsigned int y_tnr_mot2alp_nrm_gain = 216;
+static unsigned int y_tnr_mot2alp_dis_gain = 128;
+static unsigned int y_tnr_mot2alp_dis_ofst = 32;
+static unsigned int y_tnr_alpha_min = 32;
+static unsigned int y_tnr_alpha_max = 63;
+static unsigned int y_tnr_deghost_os;
+/* c tnr */
+static unsigned int c_tnr_mc_en = 1;
+static unsigned int c_tnr_txt_mode;
+static unsigned int c_tnr_mot_sad_margin = 1;
+static unsigned int c_tnr_mot_cortxt_rate = 1;
+static unsigned int c_tnr_mot_distxt_ofst = 5;
+static unsigned int c_tnr_mot_distxt_rate = 4;
+static unsigned int c_tnr_mot_dismot_ofst = 4;
+static unsigned int c_tnr_mot_frcsad_lock = 8;
+static unsigned int c_tnr_mot2alp_frc_gain = 10;
+static unsigned int c_tnr_mot2alp_nrm_gain = 216;
+static unsigned int c_tnr_mot2alp_dis_gain = 128;
+static unsigned int c_tnr_mot2alp_dis_ofst = 32;
+static unsigned int c_tnr_alpha_min = 32;
+static unsigned int c_tnr_alpha_max = 63;
+static unsigned int c_tnr_deghost_os;
+/* y snr */
+static unsigned int y_snr_err_norm = 1;
+static unsigned int y_snr_gau_bld_core = 1;
+static int y_snr_gau_bld_ofst = -1;
+static unsigned int y_snr_gau_bld_rate = 48;
+static unsigned int y_snr_gau_alp0_min;
+static unsigned int y_snr_gau_alp0_max = 63;
+static unsigned int y_bld_beta2alp_rate = 16;
+static unsigned int y_bld_beta_min;
+static unsigned int y_bld_beta_max = 63;
+/* c snr */
+static unsigned int c_snr_err_norm = 1;
+static unsigned int c_snr_gau_bld_core = 1;
+static int c_snr_gau_bld_ofst = -1;
+static unsigned int c_snr_gau_bld_rate = 48;
+static unsigned int c_snr_gau_alp0_min;
+static unsigned int c_snr_gau_alp0_max = 63;
+static unsigned int c_bld_beta2alp_rate = 16;
+static unsigned int c_bld_beta_min;
+static unsigned int c_bld_beta_max = 63;
+
 static DEFINE_SPINLOCK(lock);
 
 #define ADV_MV_LARGE_16x8 1
 #define ADV_MV_LARGE_8x16 1
 #define ADV_MV_LARGE_16x16 1
 
-#ifdef MAX_WEIGHT
-#define ME_WEIGHT_OFFSET 0x270
-#define I4MB_WEIGHT_OFFSET 0x4e0
-#define I16MB_WEIGHT_OFFSET 0x340
+/* me weight offset should not very small, it used by v1 me module. */
+/* the min real sad for me is 16 by hardware. */
+#define ME_WEIGHT_OFFSET 0x520
+#define I4MB_WEIGHT_OFFSET 0x655
+#define I16MB_WEIGHT_OFFSET 0x560
 
 #define ADV_MV_16x16_WEIGHT 0x080
-#define ADV_MV_16_8_WEIGHT 0x100
-#define ADV_MV_8x8_WEIGHT 0x200
-#define ADV_MV_4x4x4_WEIGHT 0x300
-#else
-#define ME_WEIGHT_OFFSET 0x3320
-#define I4MB_WEIGHT_OFFSET 0x3655
-#define I16MB_WEIGHT_OFFSET 0x3320
-
-#define ADV_MV_16x16_WEIGHT 0x000
-#define ADV_MV_16_8_WEIGHT 0x2000
-#define ADV_MV_8x8_WEIGHT 0x3000
+#define ADV_MV_16_8_WEIGHT 0x0e0
+#define ADV_MV_8x8_WEIGHT 0x240
 #define ADV_MV_4x4x4_WEIGHT 0x3000
-#endif
 
-#define IE_SAD_SHIFT_I16 0x003
-#define IE_SAD_SHIFT_I4 0x003
-#define ME_SAD_SHIFT_INTER 0x002
+#define IE_SAD_SHIFT_I16 0x001
+#define IE_SAD_SHIFT_I4 0x001
+#define ME_SAD_SHIFT_INTER 0x001
 
-#define STEP_2_SKIP_SAD    0x20
-#define STEP_1_SKIP_SAD    0x30
-#define STEP_0_SKIP_SAD    0x30
-#define STEP_2_SKIP_WEIGHT 0x04
-#define STEP_1_SKIP_WEIGHT 0x04
-#define STEP_0_SKIP_WEIGHT 0x04
+#define STEP_2_SKIP_SAD 0
+#define STEP_1_SKIP_SAD 0
+#define STEP_0_SKIP_SAD 0
+#define STEP_2_SKIP_WEIGHT 0
+#define STEP_1_SKIP_WEIGHT 0
+#define STEP_0_SKIP_WEIGHT 0
 
-#define ME_SAD_RANGE_0 0x0
+#define ME_SAD_RANGE_0 0x1 /* 0x0 */
 #define ME_SAD_RANGE_1 0x0
 #define ME_SAD_RANGE_2 0x0
 #define ME_SAD_RANGE_3 0x0
 
-#define ME_MV_PRE_WEIGHT_0 0x0
-#define ME_MV_PRE_WEIGHT_1 0x0
+/* use 0 for v3, 0x18 for v2 */
+#define ME_MV_PRE_WEIGHT_0 0x18
+/* use 0 for v3, 0x18 for v2 */
+#define ME_MV_PRE_WEIGHT_1 0x18
 #define ME_MV_PRE_WEIGHT_2 0x0
 #define ME_MV_PRE_WEIGHT_3 0x0
 
-#define ME_MV_STEP_WEIGHT_0 0x0
-#define ME_MV_STEP_WEIGHT_1 0x0
+/* use 0 for v3, 0x18 for v2 */
+#define ME_MV_STEP_WEIGHT_0 0x18
+/* use 0 for v3, 0x18 for v2 */
+#define ME_MV_STEP_WEIGHT_1 0x18
 #define ME_MV_STEP_WEIGHT_2 0x0
 #define ME_MV_STEP_WEIGHT_3 0x0
 
-#define ME_SAD_ENOUGH_0_DATA   0x00
-#define ME_SAD_ENOUGH_1_DATA   0x04
-#define ME_SAD_ENOUGH_2_DATA   0x11
+#define ME_SAD_ENOUGH_0_DATA 0x00
+#define ME_SAD_ENOUGH_1_DATA 0x04
+#define ME_SAD_ENOUGH_2_DATA 0x11
 #define ADV_MV_8x8_ENOUGH_DATA 0x20
 
+/* V4_COLOR_BLOCK_FIX */
+#define V3_FORCE_SKIP_SAD_0 0x10
+/* 4 Blocks */
+#define V3_FORCE_SKIP_SAD_1 0x60
+/* 16 Blocks + V3_SKIP_WEIGHT_2 */
+#define V3_FORCE_SKIP_SAD_2 0x250
+/* almost disable it -- use t_lac_coeff_2 output to F_ZERO is better */
+#define V3_ME_F_ZERO_SAD (ME_WEIGHT_OFFSET + 0x10)
+
+#define V3_IE_F_ZERO_SAD_I16 (I16MB_WEIGHT_OFFSET + 0x10)
+#define V3_IE_F_ZERO_SAD_I4 (I4MB_WEIGHT_OFFSET + 0x20)
+
+#define V3_SKIP_WEIGHT_0 0x10
+/* 4 Blocks  8 seperate search sad can be very low */
+#define V3_SKIP_WEIGHT_1 0x8 /* (4 * ME_MV_STEP_WEIGHT_1 + 0x100) */
+#define V3_SKIP_WEIGHT_2 0x3
+
+#define V3_LEVEL_1_F_SKIP_MAX_SAD 0x0
+#define V3_LEVEL_1_SKIP_MAX_SAD 0x6
+
+#define I4_ipred_weight_most   0x18
+#define I4_ipred_weight_else   0x28
+
+#define C_ipred_weight_V       0x04
+#define C_ipred_weight_H       0x08
+#define C_ipred_weight_DC      0x0c
+
+#define I16_ipred_weight_V       0x04
+#define I16_ipred_weight_H       0x08
+#define I16_ipred_weight_DC      0x0c
+
+/* 0x00 same as disable */
+#define v3_left_small_max_ie_sad 0x00
+#define v3_left_small_max_me_sad 0x40
+
 #ifndef USE_OLD_DUMP_MC
-static u32  quant_tbl_i4[2][8] = {
-	{
-		0x1b1a1918,
-		0x1f1e1d1c,
-		0x21212020,
-		0x22222222,
-		0x23232323,
-		0x24242424,
-		0x25252525,
-		0x26262525
-	},
-	{
-		0x1f1f1e1e,
-		0x20201f1f,
-		0x21212020,
-		0x22222121,
-		0x23232222,
-		0x24242323,
-		0x25252424,
-		0x26262525
-	}
-};
-
-static u32  quant_tbl_i16[2][8] = {
-	{
-		0x1b1a1918,
-		0x1f1e1d1c,
-		0x21212020,
-		0x22222222,
-		0x23232323,
-		0x24242424,
-		0x25252525,
-		0x26262525
-	},
-	{
-		0x1f1f1e1e,
-		0x20201f1f,
-		0x21212020,
-		0x22222121,
-		0x23232222,
-		0x24242323,
-		0x25252424,
-		0x26262525
-	}
-};
-
-static u32  quant_tbl_me[2][8] = {
-	{
-		0x1b1a1918,
-		0x1f1e1d1c,
-		0x21212020,
-		0x22222222,
-		0x23232323,
-		0x24242424,
-		0x25252525,
-		0x26262525
-	},
-	{
-		0x1f1f1e1e,
-		0x20201f1f,
-		0x21212020,
-		0x22222121,
-		0x23232222,
-		0x24242323,
-		0x25252424,
-		0x26262525
-	}
+static u32 qp_table_pr;
+static u32 v3_mv_sad[64] = {
+	/* For step0 */
+	0x00000004,
+	0x00010008,
+	0x00020010,
+	0x00030018,
+	0x00040020,
+	0x00050028,
+	0x00060038,
+	0x00070048,
+	0x00080058,
+	0x00090068,
+	0x000a0080,
+	0x000b0098,
+	0x000c00b0,
+	0x000d00c8,
+	0x000e00e8,
+	0x000f0110,
+	/* For step1 */
+	0x00100002,
+	0x00110004,
+	0x00120008,
+	0x0013000c,
+	0x00140010,
+	0x00150014,
+	0x0016001c,
+	0x00170024,
+	0x0018002c,
+	0x00190034,
+	0x001a0044,
+	0x001b0054,
+	0x001c0064,
+	0x001d0074,
+	0x001e0094,
+	0x001f00b4,
+	/* For step2 */
+	0x00200006,
+	0x0021000c,
+	0x0022000c,
+	0x00230018,
+	0x00240018,
+	0x00250018,
+	0x00260018,
+	0x00270030,
+	0x00280030,
+	0x00290030,
+	0x002a0030,
+	0x002b0030,
+	0x002c0030,
+	0x002d0030,
+	0x002e0030,
+	0x002f0050,
+	/* For step2 4x4-8x8 */
+	0x00300006,
+	0x0031000c,
+	0x0032000c,
+	0x00330018,
+	0x00340018,
+	0x00350018,
+	0x00360018,
+	0x00370030,
+	0x00380030,
+	0x00390030,
+	0x003a0030,
+	0x003b0030,
+	0x003c0030,
+	0x003d0030,
+	0x003e0030,
+	0x003f0050
 };
 #endif
 
@@ -450,6 +540,7 @@ enum ucode_type_e {
 	UCODE_SW_HDEC_GX_DBLK,
 	UCODE_VDEC2,
 	UCODE_GX,
+	UCODE_GXTV,
 	UCODE_MAX
 };
 
@@ -465,6 +556,7 @@ const char *ucode_name[] = {
 	"mix_sw_mc_hdec_gx_dblk",
 	"vdec2_encoder_mc",
 	"h264_enc_mc_gx",
+	"h264_enc_mc_gxtv",
 };
 
 static void dma_flush(u32 buf_start, u32 buf_size);
@@ -474,7 +566,13 @@ static const char *select_ucode(u32 ucode_index)
 	enum ucode_type_e ucode = UCODE_DUMP;
 	switch (ucode_index) {
 	case UCODE_MODE_FULL:
-		if (get_cpu_type() >= MESON_CPU_MAJOR_ID_GXBB) {
+		if (get_cpu_type() >= MESON_CPU_MAJOR_ID_GXTVBB) {
+#ifndef USE_OLD_DUMP_MC
+			ucode = UCODE_GXTV;
+#else
+			ucode = UCODE_DUMP_GX_DBLK;
+#endif
+		} else if (get_cpu_type() >= MESON_CPU_MAJOR_ID_GXBB) {
 #ifndef USE_OLD_DUMP_MC
 			ucode = UCODE_GX;
 #else
@@ -521,70 +619,71 @@ static const char *select_ucode(u32 ucode_index)
 }
 
 #ifndef USE_OLD_DUMP_MC
-static void hcodec_prog_qtbl(uint32_t index)
+static void hcodec_prog_qtbl(struct encode_wq_s *wq)
 {
+
 	WRITE_HREG(HCODEC_Q_QUANT_CONTROL,
 		(0 << 23) |  /* quant_table_addr */
 		(1 << 22));  /* quant_table_addr_update */
 
 	WRITE_HREG(HCODEC_QUANT_TABLE_DATA,
-		quant_tbl_i4[index][0]);
+		wq->quant_tbl_i4[wq->qp_table_id][0]);
 	WRITE_HREG(HCODEC_QUANT_TABLE_DATA,
-		quant_tbl_i4[index][1]);
+		wq->quant_tbl_i4[wq->qp_table_id][1]);
 	WRITE_HREG(HCODEC_QUANT_TABLE_DATA,
-		quant_tbl_i4[index][2]);
+		wq->quant_tbl_i4[wq->qp_table_id][2]);
 	WRITE_HREG(HCODEC_QUANT_TABLE_DATA,
-		quant_tbl_i4[index][3]);
+		wq->quant_tbl_i4[wq->qp_table_id][3]);
 	WRITE_HREG(HCODEC_QUANT_TABLE_DATA,
-		quant_tbl_i4[index][4]);
+		wq->quant_tbl_i4[wq->qp_table_id][4]);
 	WRITE_HREG(HCODEC_QUANT_TABLE_DATA,
-		quant_tbl_i4[index][5]);
+		wq->quant_tbl_i4[wq->qp_table_id][5]);
 	WRITE_HREG(HCODEC_QUANT_TABLE_DATA,
-		quant_tbl_i4[index][6]);
+		wq->quant_tbl_i4[wq->qp_table_id][6]);
 	WRITE_HREG(HCODEC_QUANT_TABLE_DATA,
-		quant_tbl_i4[index][7]);
+		wq->quant_tbl_i4[wq->qp_table_id][7]);
 
 	WRITE_HREG(HCODEC_Q_QUANT_CONTROL,
 		(8 << 23) |  /* quant_table_addr */
 		(1 << 22));  /* quant_table_addr_update */
 
 	WRITE_HREG(HCODEC_QUANT_TABLE_DATA,
-		quant_tbl_i16[index][0]);
+		wq->quant_tbl_i16[wq->qp_table_id][0]);
 	WRITE_HREG(HCODEC_QUANT_TABLE_DATA,
-		quant_tbl_i16[index][1]);
+		wq->quant_tbl_i16[wq->qp_table_id][1]);
 	WRITE_HREG(HCODEC_QUANT_TABLE_DATA,
-		quant_tbl_i16[index][2]);
+		wq->quant_tbl_i16[wq->qp_table_id][2]);
 	WRITE_HREG(HCODEC_QUANT_TABLE_DATA,
-		quant_tbl_i16[index][3]);
+		wq->quant_tbl_i16[wq->qp_table_id][3]);
 	WRITE_HREG(HCODEC_QUANT_TABLE_DATA,
-		quant_tbl_i16[index][4]);
+		wq->quant_tbl_i16[wq->qp_table_id][4]);
 	WRITE_HREG(HCODEC_QUANT_TABLE_DATA,
-		quant_tbl_i16[index][5]);
+		wq->quant_tbl_i16[wq->qp_table_id][5]);
 	WRITE_HREG(HCODEC_QUANT_TABLE_DATA,
-		quant_tbl_i16[index][6]);
+		wq->quant_tbl_i16[wq->qp_table_id][6]);
 	WRITE_HREG(HCODEC_QUANT_TABLE_DATA,
-		quant_tbl_i16[index][7]);
+		wq->quant_tbl_i16[wq->qp_table_id][7]);
 
 	WRITE_HREG(HCODEC_Q_QUANT_CONTROL,
 		(16 << 23) | /* quant_table_addr */
 		(1 << 22));  /* quant_table_addr_update */
 
 	WRITE_HREG(HCODEC_QUANT_TABLE_DATA,
-		quant_tbl_me[index][0]);
+		wq->quant_tbl_me[wq->qp_table_id][0]);
 	WRITE_HREG(HCODEC_QUANT_TABLE_DATA,
-		quant_tbl_me[index][1]);
+		wq->quant_tbl_me[wq->qp_table_id][1]);
 	WRITE_HREG(HCODEC_QUANT_TABLE_DATA,
-		quant_tbl_me[index][2]);
+		wq->quant_tbl_me[wq->qp_table_id][2]);
 	WRITE_HREG(HCODEC_QUANT_TABLE_DATA,
-		quant_tbl_me[index][3]);
+		wq->quant_tbl_me[wq->qp_table_id][3]);
 	WRITE_HREG(HCODEC_QUANT_TABLE_DATA,
-		quant_tbl_me[index][4]);
+		wq->quant_tbl_me[wq->qp_table_id][4]);
 	WRITE_HREG(HCODEC_QUANT_TABLE_DATA,
-		quant_tbl_me[index][5]);
+		wq->quant_tbl_me[wq->qp_table_id][5]);
 	WRITE_HREG(HCODEC_QUANT_TABLE_DATA,
-		quant_tbl_me[index][6]);
+		wq->quant_tbl_me[wq->qp_table_id][6]);
 	WRITE_HREG(HCODEC_QUANT_TABLE_DATA,
-		quant_tbl_me[index][7]);
+		wq->quant_tbl_me[wq->qp_table_id][7]);
 	return;
 }
 #endif
@@ -613,7 +712,7 @@ static void InitEncodeWeight(void)
 	/* need add a condition for ucode mode */
 	if (get_cpu_type() >= MESON_CPU_MAJOR_ID_GXBB) {
 		me_mv_weight_01 = (ME_MV_STEP_WEIGHT_1 << 24) |
-				  (ME_MV_STEP_WEIGHT_1 << 16) |
+				  (ME_MV_PRE_WEIGHT_1 << 16) |
 				  (ME_MV_STEP_WEIGHT_0 << 8) |
 				  (ME_MV_PRE_WEIGHT_0 << 0);
 
@@ -646,6 +745,14 @@ static void InitEncodeWeight(void)
 					/* force_skip_weight_0 */
 				   (STEP_0_SKIP_WEIGHT << 0);
 
+#ifndef USE_OLD_DUMP_MC
+		if (get_cpu_type() >= MESON_CPU_MAJOR_ID_GXTVBB) {
+			me_f_skip_sad = 0;
+			me_f_skip_weight = 0;
+			me_mv_weight_01 = 0;
+			me_mv_weight_23 = 0;
+		}
+#endif
 		me_sad_enough_01 = (ME_SAD_ENOUGH_1_DATA << 12) |
 					/* me_sad_enough_1 */
 				   (ME_SAD_ENOUGH_0_DATA << 0) |
@@ -1053,37 +1160,71 @@ static void mfdin_basic(u32 input, u8 iformat,
 
 		/* NR For Y */
 		WRITE_HREG((HCODEC_MFDIN_REG0D + reg_offset),
-			((cfg_y_snr_en << 0) | (1 << 1) |
-			(4 << 2) | (((-4) & 0xff) << 6) |
-			(30 << 14) | (0 << 20) | (63 << 26)));
+			((cfg_y_snr_en << 0) |
+			(y_snr_err_norm << 1) |
+			(y_snr_gau_bld_core << 2) |
+			(((y_snr_gau_bld_ofst) & 0xff) << 6) |
+			(y_snr_gau_bld_rate << 14) |
+			(y_snr_gau_alp0_min << 20) |
+			(y_snr_gau_alp0_max << 26)));
 		WRITE_HREG((HCODEC_MFDIN_REG0E + reg_offset),
-			((cfg_y_tnr_en << 0) | (1 << 1) |
-			(0 << 2) | (1 << 3) | (8 << 7) |
-			(63 << 13) | (3 << 19)));
+			((cfg_y_tnr_en << 0) |
+			(y_tnr_mc_en << 1) |
+			(y_tnr_txt_mode << 2) |
+			(y_tnr_mot_sad_margin << 3) |
+			(y_tnr_alpha_min << 7) |
+			(y_tnr_alpha_max << 13) |
+			(y_tnr_deghost_os << 19)));
 		WRITE_HREG((HCODEC_MFDIN_REG0F + reg_offset),
-			((4 << 0) | (5 << 8) | (4 << 4) |
-			(4 << 16) | (8 << 24)));
+			((y_tnr_mot_cortxt_rate << 0) |
+			(y_tnr_mot_distxt_ofst << 8) |
+			(y_tnr_mot_distxt_rate << 4) |
+			(y_tnr_mot_dismot_ofst << 16) |
+			(y_tnr_mot_frcsad_lock << 24)));
 		WRITE_HREG((HCODEC_MFDIN_REG10 + reg_offset),
-			   ((10 << 0) | (20 << 8) | (32 << 16) | (32 << 24)));
+			((y_tnr_mot2alp_frc_gain << 0) |
+			(y_tnr_mot2alp_nrm_gain << 8) |
+			(y_tnr_mot2alp_dis_gain << 16) |
+			(y_tnr_mot2alp_dis_ofst << 24)));
 		WRITE_HREG((HCODEC_MFDIN_REG11 + reg_offset),
-			   ((24 << 0) | (0 << 8) | (63 << 14)));
+			((y_bld_beta2alp_rate << 0) |
+			(y_bld_beta_min << 8) |
+			(y_bld_beta_max << 14)));
 
 		/* NR For C */
 		WRITE_HREG((HCODEC_MFDIN_REG12 + reg_offset),
-			((cfg_c_snr_en << 0) | (0 << 1) |
-			(4 << 2) | (((-4) & 0xff) << 6) |
-			(30 << 14) | (0 << 20) | (63 << 26)));
+			((cfg_y_snr_en << 0) |
+			(c_snr_err_norm << 1) |
+			(c_snr_gau_bld_core << 2) |
+			(((c_snr_gau_bld_ofst) & 0xff) << 6) |
+			(c_snr_gau_bld_rate << 14) |
+			(c_snr_gau_alp0_min << 20) |
+			(c_snr_gau_alp0_max << 26)));
+
 		WRITE_HREG((HCODEC_MFDIN_REG13 + reg_offset),
-			((cfg_c_tnr_en << 0) | (1 << 1) |
-			(0 << 2) | (1 << 3) | (8 << 7) |
-			(63 << 13) | (3 << 19)));
+			((cfg_c_tnr_en << 0) |
+			(c_tnr_mc_en << 1) |
+			(c_tnr_txt_mode << 2) |
+			(c_tnr_mot_sad_margin << 3) |
+			(c_tnr_alpha_min << 7) |
+			(c_tnr_alpha_max << 13) |
+			(c_tnr_deghost_os << 19)));
 		WRITE_HREG((HCODEC_MFDIN_REG14 + reg_offset),
-			((4 << 0) | (5 << 8) | (4 << 4) |
-			(4 << 16) | (8 << 24)));
+			((c_tnr_mot_cortxt_rate << 0) |
+			(c_tnr_mot_distxt_ofst << 8) |
+			(c_tnr_mot_distxt_rate << 4) |
+			(c_tnr_mot_dismot_ofst << 16) |
+			(c_tnr_mot_frcsad_lock << 24)));
 		WRITE_HREG((HCODEC_MFDIN_REG15 + reg_offset),
-			((10 << 0) | (20 << 8) | (32 << 16) | (32 << 24)));
+			((c_tnr_mot2alp_frc_gain << 0) |
+			(c_tnr_mot2alp_nrm_gain << 8) |
+			(c_tnr_mot2alp_dis_gain << 16) |
+			(c_tnr_mot2alp_dis_ofst << 24)));
+
 		WRITE_HREG((HCODEC_MFDIN_REG16 + reg_offset),
-			((24 << 0) | (0 << 8) | (63 << 14)));
+			((c_bld_beta2alp_rate << 0) |
+			(c_bld_beta_min << 8) |
+			(c_bld_beta_max << 14)));
 
 		WRITE_HREG((HCODEC_MFDIN_REG1_CTRL + reg_offset),
 			(iformat << 0) | (oformat << 4) |
@@ -1271,7 +1412,8 @@ static s32 set_input_format(struct encode_wq_s *wq,
 	return ret;
 }
 
-static void avc_prot_init(struct encode_wq_s *wq, u32 quant, bool IDR)
+static void avc_prot_init(struct encode_wq_s *wq,
+	struct encode_request_s *request, u32 quant, bool IDR)
 {
 	u32 data32;
 	u32 pic_width, pic_height;
@@ -1287,16 +1429,11 @@ static void avc_prot_init(struct encode_wq_s *wq, u32 quant, bool IDR)
 	i_pic_qp   = quant;
 	p_pic_qp   = quant;
 
-	wq->me_weight = 0;
-	wq->i4_weight = 0;
-	wq->i16_weight = 0;
-
 #ifndef USE_OLD_DUMP_MC
 	if ((get_cpu_type() >= MESON_CPU_MAJOR_ID_GXBB) &&
 	    (encode_manager.ucode_index == UCODE_MODE_FULL)) {
 		u32 pic_width_in_mb;
 		u32 slice_qp;
-		u32 qp_table_id;
 		pic_width_in_mb = (pic_width + 15) / 16;
 		WRITE_HREG(HCODEC_HDEC_MC_OMEM_AUTO,
 			   (1 << 31) | /* use_omem_mb_xy */
@@ -1355,24 +1492,52 @@ static void avc_prot_init(struct encode_wq_s *wq, u32 quant, bool IDR)
 			   (1 << 2) | /* ie_I16_enable */
 			   (3 << 0)); /* ie_done_sel  // fastest when waiting */
 
-		WRITE_HREG(HCODEC_IE_WEIGHT,
-			   (I16MB_WEIGHT_OFFSET << 16) |
-			   (I4MB_WEIGHT_OFFSET << 0));
+		if (request != NULL) {
+			WRITE_HREG(HCODEC_IE_WEIGHT,
+				   (request->i16_weight << 16) |
+				   (request->i4_weight << 0));
 
-		WRITE_HREG(HCODEC_ME_WEIGHT, (ME_WEIGHT_OFFSET << 0));
+			WRITE_HREG(HCODEC_ME_WEIGHT, (request->me_weight << 0));
 
-		WRITE_HREG(HCODEC_SAD_CONTROL_0,
-				/* ie_sad_offset_I16 */
-			   (I16MB_WEIGHT_OFFSET << 16) |
-			   (I4MB_WEIGHT_OFFSET << 0)); /* ie_sad_offset_I4 */
+			WRITE_HREG(HCODEC_SAD_CONTROL_0,
+					/* ie_sad_offset_I16 */
+				   (request->i16_weight << 16) |
+					/* ie_sad_offset_I4 */
+				   (request->i4_weight << 0));
 
-		WRITE_HREG(HCODEC_SAD_CONTROL_1,
-			   (IE_SAD_SHIFT_I16 << 24) |   /* ie_sad_shift_I16 */
-			   (IE_SAD_SHIFT_I4 << 20) |   /* ie_sad_shift_I4 */
-				/* me_sad_shift_INTER */
-			   (ME_SAD_SHIFT_INTER << 16) |
-				/* me_sad_offset_INTER */
-			   (ME_WEIGHT_OFFSET << 0));
+			WRITE_HREG(HCODEC_SAD_CONTROL_1,
+					/* ie_sad_shift_I16 */
+				   (IE_SAD_SHIFT_I16 << 24) |
+					/* ie_sad_shift_I4 */
+				   (IE_SAD_SHIFT_I4 << 20) |
+					/* me_sad_shift_INTER */
+				   (ME_SAD_SHIFT_INTER << 16) |
+					/* me_sad_offset_INTER */
+				   (request->me_weight << 0));
+		} else {
+			WRITE_HREG(HCODEC_IE_WEIGHT,
+				   (I16MB_WEIGHT_OFFSET << 16) |
+				   (I4MB_WEIGHT_OFFSET << 0));
+
+			WRITE_HREG(HCODEC_ME_WEIGHT, (ME_WEIGHT_OFFSET << 0));
+
+			WRITE_HREG(HCODEC_SAD_CONTROL_0,
+					/* ie_sad_offset_I16 */
+				   (I16MB_WEIGHT_OFFSET << 16) |
+					/* ie_sad_offset_I4 */
+				   (I4MB_WEIGHT_OFFSET << 0));
+
+			WRITE_HREG(HCODEC_SAD_CONTROL_1,
+					/* ie_sad_shift_I16 */
+				   (IE_SAD_SHIFT_I16 << 24) |
+					/* ie_sad_shift_I4 */
+				   (IE_SAD_SHIFT_I4 << 20) |
+					/* me_sad_shift_INTER */
+				   (ME_SAD_SHIFT_INTER << 16) |
+					/* me_sad_offset_INTER */
+				   (ME_WEIGHT_OFFSET << 0));
+		}
+
 
 		WRITE_HREG(HCODEC_ADV_MV_CTL0,
 			   (ADV_MV_LARGE_16x8 << 31) |
@@ -1387,14 +1552,13 @@ static void avc_prot_init(struct encode_wq_s *wq, u32 quant, bool IDR)
 			   (ADV_MV_LARGE_16x16 << 15) |
 			   (ADV_MV_16_8_WEIGHT << 0));  /* adv_mv_16_8_weight */
 
-		qp_table_id = 0;
-		hcodec_prog_qtbl(qp_table_id);
+		hcodec_prog_qtbl(wq);
 		if (IDR) {
-			i_pic_qp = quant_tbl_i4[qp_table_id][0] & 0xff;
+			i_pic_qp = wq->quant_tbl_i4[wq->qp_table_id][0] & 0xff;
 			p_pic_qp = i_pic_qp;
 		} else {
-			i_pic_qp = quant_tbl_i4[qp_table_id][0] & 0xff;
-			p_pic_qp = quant_tbl_me[qp_table_id][0] & 0xff;
+			i_pic_qp = wq->quant_tbl_i4[wq->qp_table_id][0] & 0xff;
+			p_pic_qp = wq->quant_tbl_me[wq->qp_table_id][0] & 0xff;
 			slice_qp = (i_pic_qp + p_pic_qp) / 2;
 			i_pic_qp = slice_qp;
 			p_pic_qp = i_pic_qp;
@@ -1410,9 +1574,11 @@ static void avc_prot_init(struct encode_wq_s *wq, u32 quant, bool IDR)
 			   (26 << 6) | /* vlc_max_delta_q_neg */
 			   (25 << 0)); /* vlc_max_delta_q_pos */
 
-		wq->me_weight = ME_WEIGHT_OFFSET;
-		wq->i4_weight = I4MB_WEIGHT_OFFSET;
-		wq->i16_weight = I16MB_WEIGHT_OFFSET;
+		if (request != NULL) {
+			wq->me_weight = request->me_weight;
+			wq->i4_weight = request->i4_weight;
+			wq->i16_weight = request->i16_weight;
+		}
 	}
 #endif
 
@@ -1753,6 +1919,7 @@ static void avc_prot_init(struct encode_wq_s *wq, u32 quant, bool IDR)
 		   ((p_pic_qp % 6) << 4) |
 		   ((p_pic_qp / 6) << 0));
 
+#ifdef ENABLE_IGNORE_FUNCTION
 	WRITE_HREG(HCODEC_IGNORE_CONFIG,
 		   (1 << 31) | /* ignore_lac_coeff_en */
 		   (1 << 26) | /* ignore_lac_coeff_else (<1) */
@@ -1763,12 +1930,42 @@ static void avc_prot_init(struct encode_wq_s *wq, u32 quant, bool IDR)
 		   (1 << 5)  | /* ignore_cac_coeff_2 (<1) */
 		   (3 << 0));  /* ignore_cac_coeff_1 (<2) */
 
-	WRITE_HREG(HCODEC_IGNORE_CONFIG_2,
-		   (1 << 31) | /* ignore_t_lac_coeff_en */
-		   (1 << 26) | /* ignore_t_lac_coeff_else (<1) */
-		   (1 << 21) | /* ignore_t_lac_coeff_2 (<1) */
-		   (5 << 16) | /* ignore_t_lac_coeff_1 (<5) */
-		   (0 << 0));
+#ifndef USE_OLD_DUMP_MC
+	if (get_cpu_type() >= MESON_CPU_MAJOR_ID_GXTVBB)
+		WRITE_HREG(HCODEC_IGNORE_CONFIG_2,
+			(1 << 31) | /* ignore_t_lac_coeff_en */
+			(1 << 26) | /* ignore_t_lac_coeff_else (<1) */
+			(2 << 21) | /* ignore_t_lac_coeff_2 (<2) */
+			(6 << 16) | /* ignore_t_lac_coeff_1 (<6) */
+			(1<<15) | /* ignore_cdc_coeff_en */
+			(0<<14) | /* ignore_t_lac_coeff_else_le_3 */
+			(1<<13) | /* ignore_t_lac_coeff_else_le_4 */
+			(1<<12) | /* ignore_cdc_only_when_empty_cac_inter */
+			(1<<11) | /* ignore_cdc_only_when_one_empty_inter */
+			/* ignore_cdc_range_max_inter 0-0, 1-1, 2-2, 3-3 */
+			(2<<9) |
+			/* ignore_cdc_abs_max_inter 0-1, 1-2, 2-3, 3-4 */
+			(0<<7) |
+			/* ignore_cdc_only_when_empty_cac_intra */
+			(1<<5) |
+			/* ignore_cdc_only_when_one_empty_intra */
+			(1<<4) |
+			/* ignore_cdc_range_max_intra 0-0, 1-1, 2-2, 3-3 */
+			(1<<2) |
+			/* ignore_cdc_abs_max_intra 0-1, 1-2, 2-3, 3-4 */
+			(0<<0));
+	else
+#endif
+		WRITE_HREG(HCODEC_IGNORE_CONFIG_2,
+			(1 << 31) | /* ignore_t_lac_coeff_en */
+			(1 << 26) | /* ignore_t_lac_coeff_else (<1) */
+			(1 << 21) | /* ignore_t_lac_coeff_2 (<1) */
+			(5 << 16) | /* ignore_t_lac_coeff_1 (<5) */
+			(0 << 0));
+#else
+	WRITE_HREG(HCODEC_IGNORE_CONFIG, 0);
+	WRITE_HREG(HCODEC_IGNORE_CONFIG_2, 0);
+#endif
 
 	WRITE_HREG(HCODEC_QDCT_MB_CONTROL,
 		   (1 << 9) | /* mb_info_soft_reset */
@@ -1875,6 +2072,111 @@ static void avc_prot_init(struct encode_wq_s *wq, u32 quant, bool IDR)
 		WRITE_HREG(HCODEC_ME_MV_WEIGHT_23, me_mv_weight_23);
 		WRITE_HREG(HCODEC_ME_SAD_RANGE_INC, me_sad_range_inc);
 
+#ifndef USE_OLD_DUMP_MC
+		if (get_cpu_type() >= MESON_CPU_MAJOR_ID_GXL) {
+			WRITE_HREG(HCODEC_V4_FORCE_SKIP_CFG,
+				(20 << 26) | /* v4_force_q_r_intra */
+				(20 << 20) | /* v4_force_q_r_inter */
+				(0 << 19) | /* v4_force_q_y_enable */
+				(5 << 16) | /* v4_force_qr_y */
+				(6 << 12) | /* v4_force_qp_y */
+				(0 << 0)); /* v4_force_skip_sad */
+
+			/* V3 Force skip */
+			WRITE_HREG(HCODEC_V3_SKIP_CONTROL,
+				(1 << 31) | /* v3_skip_enable */
+				(0 << 30) | /* v3_step_1_weight_enable */
+				(1 << 28) | /* v3_mv_sad_weight_enable */
+				(1 << 27) | /* v3_ipred_type_enable */
+				(V3_FORCE_SKIP_SAD_1 << 12) |
+				(V3_FORCE_SKIP_SAD_0 << 0));
+			WRITE_HREG(HCODEC_V3_SKIP_WEIGHT,
+				(V3_SKIP_WEIGHT_1 << 16) |
+				(V3_SKIP_WEIGHT_0 << 0));
+			WRITE_HREG(HCODEC_V3_L1_SKIP_MAX_SAD,
+				(V3_LEVEL_1_F_SKIP_MAX_SAD << 16) |
+				(V3_LEVEL_1_SKIP_MAX_SAD << 0));
+			WRITE_HREG(HCODEC_V3_L2_SKIP_WEIGHT,
+				(V3_FORCE_SKIP_SAD_2 << 16) |
+				(V3_SKIP_WEIGHT_2 << 0));
+			if (request != NULL) {
+				unsigned int off1, off2;
+				off1 = V3_IE_F_ZERO_SAD_I4 - I4MB_WEIGHT_OFFSET;
+				off2 = V3_IE_F_ZERO_SAD_I16
+						- I16MB_WEIGHT_OFFSET;
+				WRITE_HREG(HCODEC_V3_F_ZERO_CTL_0,
+					((request->i16_weight + off2) << 16) |
+					((request->i4_weight + off1) << 0));
+				off1 = V3_ME_F_ZERO_SAD - ME_WEIGHT_OFFSET;
+				WRITE_HREG(HCODEC_V3_F_ZERO_CTL_1,
+					(0 << 25) |
+					/* v3_no_ver_when_top_zero_en */
+					(0 << 24) |
+					/* v3_no_hor_when_left_zero_en */
+					(3 << 16) |  /* type_hor break */
+					((request->me_weight + off1) << 0));
+			} else {
+				WRITE_HREG(HCODEC_V3_F_ZERO_CTL_0,
+					(V3_IE_F_ZERO_SAD_I16 << 16) |
+					(V3_IE_F_ZERO_SAD_I4 << 0));
+				WRITE_HREG(HCODEC_V3_F_ZERO_CTL_1,
+					(0 << 25) |
+					/* v3_no_ver_when_top_zero_en */
+					(0 << 24) |
+					/* v3_no_hor_when_left_zero_en */
+					(3 << 16) |  /* type_hor break */
+					(V3_ME_F_ZERO_SAD << 0));
+			}
+		} else if (get_cpu_type() >= MESON_CPU_MAJOR_ID_GXTVBB) {
+			/* V3 Force skip */
+			WRITE_HREG(HCODEC_V3_SKIP_CONTROL,
+				(1 << 31) | /* v3_skip_enable */
+				(0 << 30) | /* v3_step_1_weight_enable */
+				(1 << 28) | /* v3_mv_sad_weight_enable */
+				(1 << 27) | /* v3_ipred_type_enable */
+				(0 << 12) | /* V3_FORCE_SKIP_SAD_1 */
+				(0 << 0)); /* V3_FORCE_SKIP_SAD_0 */
+			WRITE_HREG(HCODEC_V3_SKIP_WEIGHT,
+				(V3_SKIP_WEIGHT_1 << 16) |
+				(V3_SKIP_WEIGHT_0 << 0));
+			WRITE_HREG(HCODEC_V3_L1_SKIP_MAX_SAD,
+				(V3_LEVEL_1_F_SKIP_MAX_SAD << 16) |
+				(V3_LEVEL_1_SKIP_MAX_SAD << 0));
+			WRITE_HREG(HCODEC_V3_L2_SKIP_WEIGHT,
+				(0 << 16) | /* V3_FORCE_SKIP_SAD_2 */
+				(V3_SKIP_WEIGHT_2 << 0));
+			WRITE_HREG(HCODEC_V3_F_ZERO_CTL_0,
+				(0 << 16) | /* V3_IE_F_ZERO_SAD_I16 */
+				(0 << 0)); /* V3_IE_F_ZERO_SAD_I4 */
+			WRITE_HREG(HCODEC_V3_F_ZERO_CTL_1,
+				(0 << 25) | /* v3_no_ver_when_top_zero_en */
+				(0 << 24) | /* v3_no_hor_when_left_zero_en */
+				(3 << 16) |  /* type_hor break */
+				(0 << 0)); /* V3_ME_F_ZERO_SAD */
+		}
+		if (get_cpu_type() >= MESON_CPU_MAJOR_ID_GXTVBB) {
+			int i;
+			/* MV SAD Table */
+			for (i = 0; i < 64; i++)
+				WRITE_HREG(HCODEC_V3_MV_SAD_TABLE,
+					v3_mv_sad[i]);
+
+			/* IE PRED SAD Table*/
+			WRITE_HREG(HCODEC_V3_IPRED_TYPE_WEIGHT_0,
+				(C_ipred_weight_H << 24) |
+				(C_ipred_weight_V << 16) |
+				(I4_ipred_weight_else << 8) |
+				(I4_ipred_weight_most << 0));
+			WRITE_HREG(HCODEC_V3_IPRED_TYPE_WEIGHT_1,
+				(I16_ipred_weight_DC << 24) |
+				(I16_ipred_weight_H << 16) |
+				(I16_ipred_weight_V << 8) |
+				(C_ipred_weight_DC << 0));
+			WRITE_HREG(HCODEC_V3_LEFT_SMALL_MAX_SAD,
+				(v3_left_small_max_me_sad << 16) |
+				(v3_left_small_max_ie_sad << 0));
+		}
+#endif
 		WRITE_HREG(HCODEC_IE_DATA_FEED_BUFF_INFO, 0);
 	} else {
 		WRITE_HREG(HCODEC_QDCT_MB_CONTROL,
@@ -2020,6 +2322,7 @@ s32 amvenc_loadmc(const char *p, struct encode_wq_s *wq)
 		}
 	}
 
+	enc_pr(LOG_ALL, "avc encode ucode name is %s\n", p);
 	ret = get_decoder_firmware_data(VFORMAT_H264_ENC, p,
 		(u8 *)mc_addr, MC_SIZE);
 	if (ret < 0) {
@@ -2300,12 +2603,49 @@ static irqreturn_t enc_isr(s32 irq_number, void *para)
 	return IRQ_HANDLED;
 }
 
+static struct class *avc_enc_class;
+
+static ssize_t dg_manual_store(struct class *cls, struct class_attribute *attr,
+				const char *buf, size_t len)
+{
+	int ret = 0;
+	ret = sscanf(buf, "%x", (unsigned int *)&qp_table_pr);
+	if (ret < 0)
+		enc_pr(LOG_INFO, "set encoder table failed\n");
+	else
+		enc_pr(LOG_INFO, "set encoder table print = %d\n", qp_table_pr);
+
+	return len;
+}
+
+static ssize_t dg_manual_show(struct class *cls, struct class_attribute *attr,
+				char *buf)
+{
+	size_t len = 0;
+	enc_pr(LOG_INFO, "encoder table print = %d\n", qp_table_pr);
+	return len;
+}
+
+static CLASS_ATTR(encode_tbl_debug, 0664, dg_manual_show, dg_manual_store);
+
+
 static s32 convert_request(struct encode_wq_s *wq, u32 *cmd_info)
 {
+	int i = 0;
+	u8 *qp_tb;
+	u8 *ptr;
+	u32 i16_refresh = 0;
+	u32 cmd_off_i16refsh = 0;
+	u32 cmd_off_i16wt = 0;
 	u32 cmd = cmd_info[0];
 	if (!wq)
 		return -1;
 	memset(&wq->request, 0, sizeof(struct encode_request_s));
+
+	wq->request.me_weight = ME_WEIGHT_OFFSET;
+	wq->request.i4_weight = I4MB_WEIGHT_OFFSET;
+	wq->request.i16_weight = I16MB_WEIGHT_OFFSET;
+
 
 	if (cmd == ENCODER_SEQUENCE) {
 		wq->request.cmd = cmd;
@@ -2317,6 +2657,12 @@ static s32 convert_request(struct encode_wq_s *wq, u32 *cmd_info)
 	} else if ((cmd == ENCODER_IDR) || (cmd == ENCODER_NON_IDR)) {
 		wq->request.cmd = cmd;
 		wq->request.ucode_mode = cmd_info[1];
+
+		if (cmd  == ENCODER_IDR)
+			wq->fcnt_since_idr = 0;
+		else
+			wq->fcnt_since_idr++;
+
 		if (wq->request.ucode_mode == UCODE_MODE_FULL) {
 			wq->request.type = cmd_info[2];
 			wq->request.fmt = cmd_info[3];
@@ -2328,6 +2674,58 @@ static s32 convert_request(struct encode_wq_s *wq, u32 *cmd_info)
 			if (get_cpu_type() >= MESON_CPU_MAJOR_ID_GXBB)
 				wq->request.nr_mode =
 					(nr_mode > 0) ? nr_mode : cmd_info[9];
+			if (wq->request.quant == ADJUSTED_QP_FLAG) {
+				cmd_off_i16refsh = 10 +
+					sizeof(wq->quant_tbl_i4[0]) * 3 / 4;
+				cmd_off_i16wt = 10 +
+					sizeof(wq->quant_tbl_i4[0]) * 3 / 4 + 1;
+				i16_refresh = cmd_info[cmd_off_i16refsh];
+				if (!(wq->fcnt_since_idr % (i16_refresh * 2)))
+					wq->request.i16_weight -=
+						cmd_info[cmd_off_i16wt];
+				ptr = (u8 *) &cmd_info[10];
+				memcpy(wq->quant_tbl_i4[1], ptr,
+					sizeof(wq->quant_tbl_i4[1]));
+				ptr += sizeof(wq->quant_tbl_i4[1]);
+				memcpy(wq->quant_tbl_i16[1], ptr,
+					sizeof(wq->quant_tbl_i16[1]));
+				ptr += sizeof(wq->quant_tbl_i16[1]);
+				memcpy(wq->quant_tbl_me[1], ptr,
+					sizeof(wq->quant_tbl_me[1]));
+				/* switch to 1 qp table */
+				wq->qp_table_id = 1;
+				if (qp_table_pr != 0) {
+					qp_tb = (u8 *)(&wq->quant_tbl_i4[1][0]);
+					for (i = 0; i < 32; i++) {
+						enc_pr(LOG_INFO, "%d ", *qp_tb);
+						qp_tb++;
+					}
+					enc_pr(LOG_INFO, "\n");
+
+					qp_tb = (u8 *)
+						(&wq->quant_tbl_i16[1][0]);
+					for (i = 0; i < 32; i++) {
+						enc_pr(LOG_INFO, "%d ", *qp_tb);
+						qp_tb++;
+					}
+					enc_pr(LOG_INFO, "\n");
+
+					qp_tb = (u8 *)(&wq->quant_tbl_me[1][0]);
+					for (i = 0; i < 32; i++) {
+						enc_pr(LOG_INFO, "%d ", *qp_tb);
+						qp_tb++;
+					}
+					enc_pr(LOG_INFO, "\n");
+				}
+			} else {
+				wq->qp_table_id = 0;
+				memset(wq->quant_tbl_me[0], wq->request.quant,
+						sizeof(wq->quant_tbl_me[0]));
+				memset(wq->quant_tbl_i4[0], wq->request.quant,
+						sizeof(wq->quant_tbl_i4[0]));
+				memset(wq->quant_tbl_i16[0], wq->request.quant,
+						sizeof(wq->quant_tbl_i16[0]));
+			}
 		} else {
 			wq->request.quant = cmd_info[2];
 			wq->request.qp_info_size = cmd_info[3];
@@ -2420,7 +2818,7 @@ void amvenc_avc_start_cmd(struct encode_wq_s *wq,
 			(request->cmd == ENCODER_IDR) ? true : false);
 		avc_init_input_buffer(wq);
 		avc_init_output_buffer(wq);
-		avc_prot_init(wq, request->quant,
+		avc_prot_init(wq, request, request->quant,
 			(request->cmd == ENCODER_IDR) ? true : false);
 		avc_init_assit_buffer(wq);
 		enc_pr(LOG_INFO,
@@ -2680,7 +3078,7 @@ s32 amvenc_avc_start(struct encode_wq_s *wq, u32 clock)
 #else
 	ie_me_mode = (0 & ME_PIXEL_MODE_MASK) << ME_PIXEL_MODE_SHIFT;
 #endif
-	avc_prot_init(wq, wq->pic.init_qppicture, true);
+	avc_prot_init(wq, NULL, wq->pic.init_qppicture, true);
 	if (request_irq(encode_manager.irq_num, enc_isr, IRQF_SHARED,
 			"enc-irq", (void *)&encode_manager) == 0)
 		encode_manager.irq_requested = true;
@@ -2933,7 +3331,7 @@ static long amvenc_avc_ioctl(struct file *file, u32 cmd, ulong arg)
 	long r = 0;
 	u32 amrisc_cmd = 0;
 	struct encode_wq_s *wq = (struct encode_wq_s *)file->private_data;
-#define MAX_ADDR_INFO_SIZE 30
+#define MAX_ADDR_INFO_SIZE 50
 	u32 addr_info[MAX_ADDR_INFO_SIZE + 4];
 	ulong argV;
 	u32 buf_start;
@@ -3114,7 +3512,14 @@ static long amvenc_avc_ioctl(struct file *file, u32 cmd, ulong arg)
 		put_user(wq->mem.buf_size, (u32 *)arg);
 		break;
 	case AMVENC_AVC_IOC_GET_DEVINFO:
-		if (get_cpu_type() == MESON_CPU_MAJOR_ID_GXBB) {
+		if (get_cpu_type() == MESON_CPU_MAJOR_ID_GXL) {
+			/* send the same id as GXTVBB to upper*/
+			r = copy_to_user((s8 *)arg, AMVENC_DEVINFO_GXTVBB,
+				strlen(AMVENC_DEVINFO_GXTVBB));
+		} else if (get_cpu_type() == MESON_CPU_MAJOR_ID_GXTVBB) {
+			r = copy_to_user((s8 *)arg, AMVENC_DEVINFO_GXTVBB,
+				strlen(AMVENC_DEVINFO_GXTVBB));
+		} else if (get_cpu_type() == MESON_CPU_MAJOR_ID_GXBB) {
 			r = copy_to_user((s8 *)arg, AMVENC_DEVINFO_GXBB,
 				strlen(AMVENC_DEVINFO_GXBB));
 		} else if (get_cpu_type() == MESON_CPU_MAJOR_ID_MG9TV) {
@@ -3672,6 +4077,19 @@ static s32 encode_start_monitor(void)
 	else
 		clock_level = 1;
 
+	if (get_cpu_type() >= MESON_CPU_MAJOR_ID_GXTVBB) {
+		y_tnr_mot2alp_nrm_gain = 216;
+		y_tnr_mot2alp_dis_gain = 144;
+		c_tnr_mot2alp_nrm_gain = 216;
+		c_tnr_mot2alp_dis_gain = 144;
+	} else {
+		/* more tnr */
+		y_tnr_mot2alp_nrm_gain = 144;
+		y_tnr_mot2alp_dis_gain = 96;
+		c_tnr_mot2alp_nrm_gain = 144;
+		c_tnr_mot2alp_dis_gain = 96;
+	}
+
 	enc_pr(LOG_DEBUG, "encode start monitor.\n");
 	encode_manager.process_queue_state = ENCODE_PROCESS_QUEUE_START;
 	encode_manager.encode_thread = kthread_run(encode_monitor_thread,
@@ -4043,8 +4461,8 @@ static s32 amvenc_avc_probe(struct platform_device *pdev)
 		return -EFAULT;
 #else
 		encode_manager.cma_pool_size =
-			(codec_mm_get_total_size() > (32 * SZ_1M)) ?
-			(32 * SZ_1M) : codec_mm_get_total_size();
+			(codec_mm_get_total_size() > (40 * SZ_1M)) ?
+			(40 * SZ_1M) : codec_mm_get_total_size();
 		enc_pr(LOG_DEBUG,
 			"amvenc_avc - cma memory pool size: %d MB\n",
 			(u32)encode_manager.cma_pool_size / SZ_1M);
@@ -4067,6 +4485,12 @@ static s32 amvenc_avc_probe(struct platform_device *pdev)
 
 	r = init_avc_device();
 	enc_pr(LOG_INFO, "amvenc_avc probe end.\n");
+
+	avc_enc_class = class_create(THIS_MODULE, "avc_enc_debug");
+	if (IS_ERR(avc_enc_class))
+		return PTR_ERR(avc_enc_class);
+	r = class_create_file(avc_enc_class, &class_attr_encode_tbl_debug);
+
 	return r;
 }
 
@@ -4079,6 +4503,10 @@ static s32 amvenc_avc_remove(struct platform_device *pdev)
 	}
 	uninit_avc_device();
 	enc_pr(LOG_INFO, "amvenc_avc remove.\n");
+
+	class_remove_file(avc_enc_class, &class_attr_encode_tbl_debug);
+	class_destroy(avc_enc_class);
+
 	return 0;
 }
 
@@ -4178,6 +4606,106 @@ MODULE_PARM_DESC(no_timeout, "\n no_timeout flag for process request\n");
 
 module_param(nr_mode, uint, 0664);
 MODULE_PARM_DESC(nr_mode, "\n nr_mode option\n");
+
+module_param(y_tnr_mc_en, uint, 0664);
+MODULE_PARM_DESC(y_tnr_mc_en, "\n y_tnr_mc_en option\n");
+module_param(y_tnr_txt_mode, uint, 0664);
+MODULE_PARM_DESC(y_tnr_txt_mode, "\n y_tnr_txt_mode option\n");
+module_param(y_tnr_mot_sad_margin, uint, 0664);
+MODULE_PARM_DESC(y_tnr_mot_sad_margin, "\n y_tnr_mot_sad_margin option\n");
+module_param(y_tnr_mot_cortxt_rate, uint, 0664);
+MODULE_PARM_DESC(y_tnr_mot_cortxt_rate, "\n y_tnr_mot_cortxt_rate option\n");
+module_param(y_tnr_mot_distxt_ofst, uint, 0664);
+MODULE_PARM_DESC(y_tnr_mot_distxt_ofst, "\n y_tnr_mot_distxt_ofst option\n");
+module_param(y_tnr_mot_distxt_rate, uint, 0664);
+MODULE_PARM_DESC(y_tnr_mot_distxt_rate, "\n y_tnr_mot_distxt_rate option\n");
+module_param(y_tnr_mot_dismot_ofst, uint, 0664);
+MODULE_PARM_DESC(y_tnr_mot_dismot_ofst, "\n y_tnr_mot_dismot_ofst option\n");
+module_param(y_tnr_mot_frcsad_lock, uint, 0664);
+MODULE_PARM_DESC(y_tnr_mot_frcsad_lock, "\n y_tnr_mot_frcsad_lock option\n");
+module_param(y_tnr_mot2alp_frc_gain, uint, 0664);
+MODULE_PARM_DESC(y_tnr_mot2alp_frc_gain, "\n y_tnr_mot2alp_frc_gain option\n");
+module_param(y_tnr_mot2alp_nrm_gain, uint, 0664);
+MODULE_PARM_DESC(y_tnr_mot2alp_nrm_gain, "\n y_tnr_mot2alp_nrm_gain option\n");
+module_param(y_tnr_mot2alp_dis_gain, uint, 0664);
+MODULE_PARM_DESC(y_tnr_mot2alp_dis_gain, "\n y_tnr_mot2alp_dis_gain option\n");
+module_param(y_tnr_mot2alp_dis_ofst, uint, 0664);
+MODULE_PARM_DESC(y_tnr_mot2alp_dis_ofst, "\n y_tnr_mot2alp_dis_ofst option\n");
+module_param(y_tnr_alpha_min, uint, 0664);
+MODULE_PARM_DESC(y_tnr_alpha_min, "\n y_tnr_alpha_min option\n");
+module_param(y_tnr_alpha_max, uint, 0664);
+MODULE_PARM_DESC(y_tnr_alpha_max, "\n y_tnr_alpha_max option\n");
+module_param(y_tnr_deghost_os, uint, 0664);
+MODULE_PARM_DESC(y_tnr_deghost_os, "\n y_tnr_deghost_os option\n");
+
+module_param(c_tnr_mc_en, uint, 0664);
+MODULE_PARM_DESC(c_tnr_mc_en, "\n c_tnr_mc_en option\n");
+module_param(c_tnr_txt_mode, uint, 0664);
+MODULE_PARM_DESC(c_tnr_txt_mode, "\n c_tnr_txt_mode option\n");
+module_param(c_tnr_mot_sad_margin, uint, 0664);
+MODULE_PARM_DESC(c_tnr_mot_sad_margin, "\n c_tnr_mot_sad_margin option\n");
+module_param(c_tnr_mot_cortxt_rate, uint, 0664);
+MODULE_PARM_DESC(c_tnr_mot_cortxt_rate, "\n c_tnr_mot_cortxt_rate option\n");
+module_param(c_tnr_mot_distxt_ofst, uint, 0664);
+MODULE_PARM_DESC(c_tnr_mot_distxt_ofst, "\n c_tnr_mot_distxt_ofst option\n");
+module_param(c_tnr_mot_distxt_rate, uint, 0664);
+MODULE_PARM_DESC(c_tnr_mot_distxt_rate, "\n c_tnr_mot_distxt_rate option\n");
+module_param(c_tnr_mot_dismot_ofst, uint, 0664);
+MODULE_PARM_DESC(c_tnr_mot_dismot_ofst, "\n c_tnr_mot_dismot_ofst option\n");
+module_param(c_tnr_mot_frcsad_lock, uint, 0664);
+MODULE_PARM_DESC(c_tnr_mot_frcsad_lock, "\n c_tnr_mot_frcsad_lock option\n");
+module_param(c_tnr_mot2alp_frc_gain, uint, 0664);
+MODULE_PARM_DESC(c_tnr_mot2alp_frc_gain, "\n c_tnr_mot2alp_frc_gain option\n");
+module_param(c_tnr_mot2alp_nrm_gain, uint, 0664);
+MODULE_PARM_DESC(c_tnr_mot2alp_nrm_gain, "\n c_tnr_mot2alp_nrm_gain option\n");
+module_param(c_tnr_mot2alp_dis_gain, uint, 0664);
+MODULE_PARM_DESC(c_tnr_mot2alp_dis_gain, "\n c_tnr_mot2alp_dis_gain option\n");
+module_param(c_tnr_mot2alp_dis_ofst, uint, 0664);
+MODULE_PARM_DESC(c_tnr_mot2alp_dis_ofst, "\n c_tnr_mot2alp_dis_ofst option\n");
+module_param(c_tnr_alpha_min, uint, 0664);
+MODULE_PARM_DESC(c_tnr_alpha_min, "\n c_tnr_alpha_min option\n");
+module_param(c_tnr_alpha_max, uint, 0664);
+MODULE_PARM_DESC(c_tnr_alpha_max, "\n c_tnr_alpha_max option\n");
+module_param(c_tnr_deghost_os, uint, 0664);
+MODULE_PARM_DESC(c_tnr_deghost_os, "\n c_tnr_deghost_os option\n");
+
+module_param(y_snr_err_norm, uint, 0664);
+MODULE_PARM_DESC(y_snr_err_norm, "\n y_snr_err_norm option\n");
+module_param(y_snr_gau_bld_core, uint, 0664);
+MODULE_PARM_DESC(y_snr_gau_bld_core, "\n y_snr_gau_bld_core option\n");
+module_param(y_snr_gau_bld_ofst, int, 0664);
+MODULE_PARM_DESC(y_snr_gau_bld_ofst, "\n y_snr_gau_bld_ofst option\n");
+module_param(y_snr_gau_bld_rate, uint, 0664);
+MODULE_PARM_DESC(y_snr_gau_bld_rate, "\n y_snr_gau_bld_rate option\n");
+module_param(y_snr_gau_alp0_min, uint, 0664);
+MODULE_PARM_DESC(y_snr_gau_alp0_min, "\n y_snr_gau_alp0_min option\n");
+module_param(y_snr_gau_alp0_max, uint, 0664);
+MODULE_PARM_DESC(y_snr_gau_alp0_max, "\n y_snr_gau_alp0_max option\n");
+module_param(y_bld_beta2alp_rate, uint, 0664);
+MODULE_PARM_DESC(y_bld_beta2alp_rate, "\n y_bld_beta2alp_rate option\n");
+module_param(y_bld_beta_min, uint, 0664);
+MODULE_PARM_DESC(y_bld_beta_min, "\n y_bld_beta_min option\n");
+module_param(y_bld_beta_max, uint, 0664);
+MODULE_PARM_DESC(y_bld_beta_max, "\n y_bld_beta_max option\n");
+
+module_param(c_snr_err_norm, uint, 0664);
+MODULE_PARM_DESC(c_snr_err_norm, "\n c_snr_err_norm option\n");
+module_param(c_snr_gau_bld_core, uint, 0664);
+MODULE_PARM_DESC(c_snr_gau_bld_core, "\n c_snr_gau_bld_core option\n");
+module_param(c_snr_gau_bld_ofst, int, 0664);
+MODULE_PARM_DESC(c_snr_gau_bld_ofst, "\n c_snr_gau_bld_ofst option\n");
+module_param(c_snr_gau_bld_rate, uint, 0664);
+MODULE_PARM_DESC(c_snr_gau_bld_rate, "\n c_snr_gau_bld_rate option\n");
+module_param(c_snr_gau_alp0_min, uint, 0664);
+MODULE_PARM_DESC(c_snr_gau_alp0_min, "\n c_snr_gau_alp0_min option\n");
+module_param(c_snr_gau_alp0_max, uint, 0664);
+MODULE_PARM_DESC(c_snr_gau_alp0_max, "\n c_snr_gau_alp0_max option\n");
+module_param(c_bld_beta2alp_rate, uint, 0664);
+MODULE_PARM_DESC(c_bld_beta2alp_rate, "\n c_bld_beta2alp_rate option\n");
+module_param(c_bld_beta_min, uint, 0664);
+MODULE_PARM_DESC(c_bld_beta_min, "\n c_bld_beta_min option\n");
+module_param(c_bld_beta_max, uint, 0664);
+MODULE_PARM_DESC(c_bld_beta_max, "\n c_bld_beta_max option\n");
 
 module_init(amvenc_avc_driver_init_module);
 module_exit(amvenc_avc_driver_remove_module);

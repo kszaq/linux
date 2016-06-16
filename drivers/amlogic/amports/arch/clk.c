@@ -49,7 +49,7 @@ static int clock_source_wxhxfps_saved[VDEC_MAX + 1];
 
 #define IF_HAVE_RUN_P1_RET(p, fn, p1)\
 			do {\
-				pr_info("%s-----%d\n", __func__, clk);\
+				pr_debug("%s-----%d\n", __func__, clk);\
 				if (p && p->fn)\
 					return p->fn(p1);\
 				else\
@@ -229,7 +229,7 @@ int vdec_source_changed_for_clk_set(int format, int width, int height, int fps)
 		changed to default  min clk.
 	*/
 
-	if (format == VFORMAT_HEVC) {
+	if (format == VFORMAT_HEVC || format == VFORMAT_VP9) {
 		ret_clk = hevc_clock_set(clk);
 		clock_source_wxhxfps_saved[VDEC_HEVC] = width * height * fps;
 	} else if (format == VFORMAT_H264_ENC && format == VFORMAT_JPEG_ENC) {

@@ -68,6 +68,12 @@ struct vppfilter_mode_s {
 	u32 vpp_sc_misc_;
 	u32 vpp_vsc_start_phase_step;
 	u32 vpp_hsc_start_phase_step;
+	bool vpp_pre_vsc_en;
+	bool vpp_pre_hsc_en;
+	u32 vpp_vert_filter;
+	u32 vpp_horz_filter;
+	const u32 *vpp_vert_chroma_coeff;
+	u32 vpp_vert_chroma_filter_en;
 };
 
 struct vpp_filters_s {
@@ -120,24 +126,32 @@ struct vpp_frame_par_s {
 	u32 supsc1_hori_ratio;
 	u32 supsc0_vert_ratio;
 	u32 supsc1_vert_ratio;
+	u32 spsc0_w_in;
+	u32 spsc0_h_in;
+	u32 spsc1_w_in;
+	u32 spsc1_h_in;
+
 };
 
 #if 0
 /* (MESON_CPU_TYPE==MESON_CPU_TYPE_MESON6TV)||
 (MESON_CPU_TYPE==MESON_CPU_TYPE_MESONG9TV) */
 #define TV_3D_FUNCTION_OPEN
-#define TV_REVERSE
 #endif
 
-#if 0	/* (MESON_CPU_TYPE==MESON_CPU_TYPE_MESONG9TV) */
-#define SUPER_SCALER_OPEN
-enum select_scaler_path_e {
-	sup0_sp1_pp_scpath,
-	sup0_pp_sp1_scpath
-};
-#define SUPER_CORE0_WIDTH_MAX  1024
-#define SUPER_CORE1_WIDTH_MAX  2048
+#define TV_REVERSE
+
+#ifdef TV_REVERSE
+extern bool reverse;
 #endif
+
+enum select_scaler_path_e {
+	sup0_pp_sp1_scpath,
+	sup0_pp_post_blender,
+};
+#define SUPER_CORE0_WIDTH_MAX  2048
+#define SUPER_CORE1_WIDTH_MAX  4096
+
 
 #ifdef TV_3D_FUNCTION_OPEN
 
@@ -225,6 +239,8 @@ void vpp_set_video_speed_check(u32 h, u32 w);
 extern
 void vpp_get_video_speed_check(u32 *h, u32 *w);
 
+extern
+void vpp_super_scaler_support(void);
 
 #ifdef CONFIG_AM_VIDEO2
 extern void
@@ -240,5 +256,17 @@ extern void vpp2_set_zoom_ratio(u32 r);
 
 extern u32 vpp2_get_zoom_ratio(void);
 #endif
+
+extern int vpp_set_super_sclaer_regs(int scaler_path_sel,
+		int reg_srscl0_enable,
+		int reg_srscl0_hsize,
+		int reg_srscl0_vsize,
+		int reg_srscl0_hori_ratio,
+		int reg_srscl0_vert_ratio,
+		int reg_srscl1_enable,
+		int reg_srscl1_hsize,
+		int reg_srscl1_vsize,
+		int reg_srscl1_hori_ratio,
+		int reg_srscl1_vert_ratio);
 
 #endif				/* VPP_H */
