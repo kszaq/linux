@@ -1641,7 +1641,6 @@ void osd_pan_display_hw(u32 index, unsigned int xoffset, unsigned int yoffset)
 		osd_hw.pandata[index].y_start += diff_y;
 		osd_hw.pandata[index].y_end   += diff_y;
 		add_to_update_list(index, DISP_GEOMETRY);
-		osd_wait_vsync_hw();
 	}
 #ifdef CONFIG_AM_FB_EXT
 	osd_ext_clone_pan(index);
@@ -3199,12 +3198,7 @@ void osd_resume_hw(void)
 static unsigned int fb0_cfg_w0_save;
 void  osd_freeze_hw(void)
 {
-#ifdef CONFIG_VSYNC_RDMA
-	enable_rdma(0);
-#endif
-#ifdef CONFIG_FB_OSD_VSYNC_RDMA
 	osd_rdma_enable(0);
-#endif
 	fb0_cfg_w0_save = osd_reg_read(VIU_OSD1_BLK0_CFG_W0);
 	pr_debug("osd_freezed\n");
 
@@ -3213,23 +3207,13 @@ void  osd_freeze_hw(void)
 void osd_thaw_hw(void)
 {
 	pr_debug("osd_thawed\n");
-#ifdef CONFIG_FB_OSD_VSYNC_RDMA
 	osd_rdma_enable(1);
-#endif
-#ifdef CONFIG_VSYNC_RDMA
-	enable_rdma(1);
-#endif
 	return;
 }
 void osd_restore_hw(void)
 {
 	osd_reg_write(VIU_OSD1_BLK0_CFG_W0, fb0_cfg_w0_save);
-#ifdef CONFIG_FB_OSD_VSYNC_RDMA
 	osd_rdma_enable(1);
-#endif
-#ifdef CONFIG_VSYNC_RDMA
-	enable_rdma(1);
-#endif
 	pr_debug("osd_restored\n");
 
 	return;

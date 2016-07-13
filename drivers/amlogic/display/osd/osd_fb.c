@@ -58,6 +58,8 @@ struct osd_info_s osd_info = {
 	.osd_reverse = 0,
 };
 
+extern void osd_wait_vsync_hw(void);
+
 const struct color_bit_define_s default_color_format_array[] = {
 	INVALID_BPP_ITEM,
 	INVALID_BPP_ITEM,
@@ -597,6 +599,14 @@ static int osd_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg)
 	case FBIOPUT_OSD_WINDOW_AXIS:
 		ret = copy_from_user(&osd_dst_axis, argp, 4 * sizeof(s32));
 		break;
+#ifdef CONFIG_UMP
+	case GET_UMP_SECURE_ID_BUF1:
+		return disp_get_ump_secure_id(info, fbdev, arg, 0);
+		break;
+	case GET_UMP_SECURE_ID_BUF2:
+		return disp_get_ump_secure_id(info, fbdev, arg, 1);
+		break;
+#endif
 	default:
 		osd_log_err("command 0x%x not supported (%s)\n",
 				cmd, current->comm);
@@ -754,7 +764,7 @@ static int osd_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg)
 			ret = -1;
 		break;
 	case FBIO_WAITFORVSYNC:
-		osd_wait_vsync_event();
+		osd_wait_vsync_hw();
 		ret = copy_to_user(argp, &ret, sizeof(u32));
 	default:
 		break;
