@@ -941,7 +941,7 @@ static int __init ionvideo_create_instance(int inst)
     q->ops = &ionvideo_video_qops;
     q->mem_ops = &vb2_ion_memops;
     //q->timestamp_type = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
-    q->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
+	q->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
 
     ret = vb2_queue_init(q);
     if (ret)
@@ -989,7 +989,7 @@ free_dev:
 
 static u32 buf_num_queue(struct vb2_queue *q)
 {
-    return atomic_read(&q->owned_by_drv_count);
+    return atomic_read(&q->queued_count);
 }
 
 static ssize_t vframe_states_show(struct class *class, struct class_attribute* attr, char* buf)
